@@ -25,6 +25,7 @@ admin_states = {}
 def init_db():
     conn = sqlite3.connect("bot_lienquan.db")
     cursor = conn.cursor()
+    # Bảng User
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -35,6 +36,7 @@ def init_db():
             reward_given INTEGER DEFAULT 0
         )
     """)
+    # Bảng Kho hàng (Virtual Stocks)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS virtual_stocks (
             item_type TEXT PRIMARY KEY,
@@ -42,7 +44,25 @@ def init_db():
             price INTEGER DEFAULT 50
         )
     """)
-    # 3 gói sản phẩm theo yêu cầu
+    # Bảng Quản lý Giftcode
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS giftcodes (
+            code TEXT PRIMARY KEY,
+            reward_xu INTEGER,
+            max_uses INTEGER,
+            used_count INTEGER DEFAULT 0
+        )
+    """)
+    # Bảng Lịch sử người dùng đã nhập code nào (tránh dùng lại)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_redeemed_codes (
+            user_id INTEGER,
+            code TEXT,
+            PRIMARY KEY (user_id, code)
+        )
+    """)
+    
+    # Khởi tạo mặc định 3 gói sản phẩm nếu chưa có
     cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('goi_500skin', 0, 100)")
     cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('goi_anime_1m', 0, 50)")
     cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('goi_rand_23s', 0, 30)")
@@ -64,6 +84,7 @@ def get_stock_info(item_type):
 def add_stock_count(item_type, amount):
     conn = sqlite3.connect("bot_lienquan.db")
     cursor = conn.cursor()
+    # Cộng dồn vào kho hiện tại
     cursor.execute("UPDATE virtual_stocks SET stock_count = stock_count + ? WHERE item_type = ?", (amount, item_type))
     conn.commit()
     conn.close()
@@ -208,7 +229,7 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await query.answer("❌ Bạn chưa tham gia kênh!", show_alert=True)
     except Exception:
-        await query.answer("❌ Lỗi kiểm tra!", show_alert=True)
+        await query.answer("❌ Lỗi kiểm tra kênh!", show_alert=True)
 
 async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -225,7 +246,7 @@ async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎲 <b>Random 2s-3s (Uy tín >90):</b> <code>{g3['stock']}</code> acc <i>({g3['price']} xu)</i>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         f"💰 <b>Số dư tài khoản:</b> <code>{u_data['xu']} xu</code>\n"
-        "📌 <i>Cách kiếm thêm xu: Bấm nút 'Kiếm Xu' bên dưới để lấy link mời bạn bè (1 Ref = 5 xu).</i>"
+        "📌 <i>Cách kiếm thêm xu: Bấm nút 'Kiếm Xu' để lấy link mời bạn bè (1 Ref = 5 xu) hoặc nhập Code từ Admin!</i>"
     )
     keyboard = [
         [InlineKeyboardButton(f"👑 Acc 500+ Skin (Kho: {g1['stock']})", callback_data="doi_goi_500skin")],
@@ -250,7 +271,7 @@ async def send_main_menu_callback(query, context: ContextTypes.DEFAULT_TYPE):
         f"🎲 <b>Random 2s-3s (Uy tín >90):</b> <code>{g3['stock']}</code> acc <i>({g3['price']} xu)</i>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         f"💰 <b>Số dư tài khoản:</b> <code>{u_data['xu']} xu</code>\n"
-        "📌 <i>Cách kiếm thêm xu: Bấm nút 'Kiếm Xu' bên dưới để lấy link mời bạn bè (1 Ref = 5 xu).</i>"
+        "📌 <i>Cách kiếm thêm xu: Bấm nút 'Kiếm Xu' để lấy link mời bạn bè (1 Ref = 5 xu) hoặc nhập Code từ Admin!</i>"
     )
     keyboard = [
         [InlineKeyboardButton(f"👑 Acc 500+ Skin (Kho: {g1['stock']})", callback_data="doi_goi_500skin")],
@@ -276,7 +297,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         item_type = data.replace("add_stock_", "")
         admin_states[user_id] = {"action": "add_stock", "item": item_type}
         await query.answer()
-        await query.message.reply_text("📦 <b>Nhập số lượng muốn thêm vào kho:</b>", parse_mode="HTML")
+        await query.message.reply_text("📦 <b>Nhập số lượng muốn cộng thêm vào kho:</b>", parse_mode="HTML")
         return
 
     if data.startswith("set_price_"):
@@ -291,7 +312,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     u_data = get_user(user_id)
 
-    # Xử lý đổi các gói
     for item_key in ["goi_500skin", "goi_anime_1m", "goi_rand_23s"]:
         if data == f"doi_{item_key}":
             info = get_stock_info(item_key)
@@ -313,7 +333,59 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "kiem_xu":
         ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
         await query.answer("Đã tạo link!", show_alert=True)
-        await context.bot.send_message(chat_id=user_id, text=f"🔗 <b>Link giới thiệu (1 Ref = 5 xu):</b>\n<code>{ref_link}</code>", parse_mode="HTML")
+        await context.bot.send_message(chat_id=user_id, text=f"🔗 <b>Link giới thiệu (1 Ref = 5 xu):</b>\n<code>{ref_link}</code>\n\n💡 <i>Hoặc bạn có thể săn Giftcode từ Admin để nhập nhận xu miễn phí!</i>", parse_mode="HTML")
+
+# --- LỆNH TẠO CODE (Dành cho Admin theo các bước) ---
+async def admin_taocode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    admin_states[ADMIN_ID] = {"action": "create_code_step1"}
+    await update.message.reply_text("🎟️ <b>TẠO GIFTCODE MỚI</b>\n\n👉 Bước 1: Nhập tên mã code bạn muốn tạo (Ví dụ: <code>Minhducvip</code>):", parse_mode="HTML")
+
+# --- LỆNH NHẬP CODE (Dành cho User) ---
+async def nhap_code_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    args = context.args
+    if not args:
+        await update.message.reply_text("❌ Vui lòng nhập mã code theo cú pháp: <code>/nhapcode [Mã_Code]</code>", parse_mode="HTML")
+        return
+    
+    code_input = args[0].strip()
+    conn = sqlite3.connect("bot_lienquan.db")
+    cursor = conn.cursor()
+    
+    # Kiểm tra code có tồn tại không
+    cursor.execute("SELECT reward_xu, max_uses, used_count FROM giftcodes WHERE code = ?", (code_input,))
+    code_row = cursor.fetchone()
+    
+    if not code_row:
+        conn.close()
+        await update.message.reply_text("❌ Mã giftcode không tồn tại hoặc đã hết hạn!")
+        return
+        
+    reward_xu, max_uses, used_count = code_row
+    
+    # Kiểm tra user này đã nhập code này chưa
+    cursor.execute("SELECT 1 FROM user_redeemed_codes WHERE user_id = ? AND code = ?", (user_id, code_input))
+    if cursor.fetchone():
+        conn.close()
+        await update.message.reply_text("❌ Bạn đã sử dụng mã giftcode này rồi, không thể dùng lại!")
+        return
+        
+    # Kiểm tra số lượt dùng còn lại
+    if used_count >= max_uses:
+        conn.close()
+        await update.message.reply_text("❌ Mã giftcode này đã hết lượt sử dụng!")
+        return
+        
+    # Thực hiện cộng xu thật và cập nhật database
+    cursor.execute("UPDATE giftcodes SET used_count = used_count + 1 WHERE code = ?", (code_input,))
+    cursor.execute("INSERT INTO user_redeemed_codes (user_id, code) VALUES (?, ?)", (user_id, code_input))
+    conn.commit()
+    conn.close()
+    
+    add_user_xu(user_id, reward_xu)
+    await update.message.reply_text(f"🎉 <b>NHẬP CODE THÀNH CÔNG!</b>\n\n🎁 Bạn nhận được: <b>+{reward_xu} xu</b> vào tài khoản.", parse_mode="HTML")
 
 async def admin_addxu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -345,7 +417,7 @@ async def admin_themkho_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton(f"🎌 Thêm Random Anime (Kho: {g2['stock']})", callback_data="add_stock_goi_anime_1m")],
         [InlineKeyboardButton(f"🎲 Thêm Random 2s-3s (Kho: {g3['stock']})", callback_data="add_stock_goi_rand_23s")]
     ]
-    await update.message.reply_text("📦 <b>CHỌN KHO TĂNG STOCK:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await update.message.reply_text("📦 <b>CHỌN KHO ĐỂ CỘNG THÊM STOCK:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def admin_chinhgia_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -374,26 +446,67 @@ async def admin_xemkho(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
+# --- XỬ LÝ NHẬP LIỆU TEXT CỦA ADMIN (Kho, Giá, Tạo Code theo từng bước) ---
 async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         return
+        
+    text_input = update.message.text.strip()
+    
     if user_id in admin_states:
         state = admin_states[user_id]
         action = state["action"]
-        item_type = state["item"]
+        
+        # Xử lý quy trình tạo code 3 bước
+        if action == "create_code_step1":
+            admin_states[user_id] = {"action": "create_code_step2", "code_name": text_input}
+            await update.message.reply_text(f"🎟️ Mã code đã chọn: <b>{text_input}</b>\n\n👉 Bước 2: Nhập số xu người dùng sẽ nhận được (Ví dụ: <code>10</code>):", parse_mode="HTML")
+            return
+            
+        elif action == "create_code_step2":
+            try:
+                xu_val = int(text_input)
+                code_name = state["code_name"]
+                admin_states[user_id] = {"action": "create_code_step3", "code_name": code_name, "reward_xu": xu_val}
+                await update.message.reply_text(f"🎟️ Mã: <b>{code_name}</b> | Số xu: <b>{xu_val}</b>\n\n👉 Bước 3: Nhập số lượng người dùng tối đa được sử dụng code này (Ví dụ: <code>10</code>):", parse_mode="HTML")
+            except ValueError:
+                await update.message.reply_text("❌ Số xu phải là số nguyên! Vui lòng nhập lại số xu:")
+            return
+            
+        elif action == "create_code_step3":
+            try:
+                max_uses_val = int(text_input)
+                code_name = state["code_name"]
+                reward_xu = state["reward_xu"]
+                
+                # Lưu vào Database
+                conn = sqlite3.connect("bot_lienquan.db")
+                cursor = conn.cursor()
+                cursor.execute("INSERT OR REPLACE INTO giftcodes (code, reward_xu, max_uses, used_count) VALUES (?, ?, ?, 0)", (code_name, reward_xu, max_uses_val))
+                conn.commit()
+                conn.close()
+                
+                del admin_states[user_id]
+                await update.message.reply_text(f"✅ <b>TẠO GIFTCODE THÀNH CÔNG!</b>\n\n🎟️ Mã: <code>{code_name}</code>\n🎁 Phần thưởng: <b>{reward_xu} xu</b>\n👥 Số lượng lượt dùng: <b>{max_uses_val} người</b>", parse_mode="HTML")
+            except ValueError:
+                await update.message.reply_text("❌ Số lượng người dùng phải là số nguyên! Nhập lại:")
+            return
+
+        # Xử lý kho và giá
+        item_type = state.get("item")
         try:
-            value = int(update.message.text.strip())
+            value = int(text_input)
             if action == "add_stock":
                 add_stock_count(item_type, value)
                 new_info = get_stock_info(item_type)
                 del admin_states[user_id]
-                await update.message.reply_text(f"✅ Đã thêm thành công! Tổng kho hiện tại: {new_info['stock']}")
+                await update.message.reply_text(f"✅ Đã cộng thêm {value} vào kho! Tổng kho hiện tại: <b>{new_info['stock']}</b>", parse_mode="HTML")
             elif action == "set_price":
                 update_item_price(item_type, value)
                 new_info = get_stock_info(item_type)
                 del admin_states[user_id]
-                await update.message.reply_text(f"✅ Đã cập nhật giá mới thành: {new_info['price']} xu")
+                await update.message.reply_text(f"✅ Đã cập nhật giá mới thành: <b>{new_info['price']} xu</b>", parse_mode="HTML")
         except ValueError:
             await update.message.reply_text("❌ Vui lòng nhập một con số nguyên hợp lệ!")
 
@@ -402,6 +515,8 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("addxu", admin_addxu))
+    application.add_handler(CommandHandler("taocode", admin_taocode))
+    application.add_handler(CommandHandler("nhapcode", nhap_code_command))
     application.add_handler(CommandHandler("themkho", admin_themkho_menu))
     application.add_handler(CommandHandler("chinhgia", admin_chinhgia_menu))
     application.add_handler(CommandHandler("kho", admin_xemkho))
@@ -412,3 +527,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+ 
