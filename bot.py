@@ -2,7 +2,6 @@ import os
 import logging
 import sqlite3
 import random
-from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, 
@@ -16,9 +15,8 @@ from telegram.ext import (
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = "8483501766:AAFSg-dWNLZjmKNQxMKQzZh2KOoyA_YBL5E"
+TOKEN = "8997431493:AAFVJa8I9cM-MTnNHUCn0xptTyRw9MFS_lI"
 GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "@nhomsharemodallgame")
-PORT = int(os.getenv("PORT", "8080"))
 ADMIN_ID = 7907990385  # ID Admin của ông
 
 admin_states = {}
@@ -44,8 +42,10 @@ def init_db():
             price INTEGER DEFAULT 50
         )
     """)
-    cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('chu_off', 0, 50)")
-    cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('random_23s', 0, 30)")
+    # 3 gói sản phẩm theo yêu cầu
+    cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('goi_500skin', 0, 100)")
+    cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('goi_anime_1m', 0, 50)")
+    cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('goi_rand_23s', 0, 30)")
     conn.commit()
     conn.close()
 
@@ -91,10 +91,13 @@ def sub_stock_count(item_type, amount=1):
 def generate_fake_account(item_type):
     acc_id = random.randint(10000000, 99999999)
     password = ''.join(random.choices("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", k=8))
-    if item_type == "chu_off":
-        return f"🔒 <b>Tài khoản Chủ Off >3 Tháng (Ao):</b>\nUsername: <code>acc_off_{acc_id}@gmail.com</code>\nPassword: <code>{password}</code>\n⚠️ <i>Lưu ý: Đổi mật khẩu ngay sau khi nhận!</i>"
+    
+    if item_type == "goi_500skin":
+        return f"👑 <b>Acc Chủ Off 3 Tháng (>500 Skin, 1 Skin 3s):</b>\nUsername: <code>acc_500s_{acc_id}@gmail.com</code>\nPassword: <code>{password}</code>\n💎 <i>Thông tin: Hơn 500 skin, kèm theo ít nhất 1 skin 3s cực xịn!</i>\n⚠️ <i>Lưu ý: Đổi mật khẩu ngay sau khi nhận!</i>"
+    elif item_type == "goi_anime_1m":
+        return f"🎌 <b>Random Skin Anime (Off >1 Tháng, Uy tín >90):</b>\nUsername: <code>anime_1m_{acc_id}@gmail.com</code>\nPassword: <code>{password}</code>\n⭐ <i>Thông tin: Chủ off trên 1 tháng, uy tín >90, có skin anime hợp tác!</i>\n⚠️ <i>Lưu ý: Đổi mật khẩu ngay sau khi nhận!</i>"
     else:
-        return f"🎲 <b>Tài khoản Random 2s-3s (Ao):</b>\nUsername: <code>rand_{acc_id}@gmail.com</code>\nPassword: <code>{password}</code>\n⚠️ <i>Lưu ý: Đổi mật khẩu ngay sau khi nhận!</i>"
+        return f"🎲 <b>Random Skin Ngẫu Nhiên 2s-3s (Uy tín >90):</b>\nUsername: <code>rand_23s_{acc_id}@gmail.com</code>\nPassword: <code>{password}</code>\n🛡️ <i>Thông tin: Uy tín trên 90, sở hữu skin 2s-3s random!</i>\n⚠️ <i>Lưu ý: Đổi mật khẩu ngay sau khi nhận!</i>"
 
 def get_user(user_id):
     conn = sqlite3.connect("bot_lienquan.db")
@@ -127,9 +130,6 @@ def add_user_xu(user_id, amount):
         cursor.execute("INSERT INTO users (user_id, xu, joined) VALUES (?, ?, 0)", (user_id, amount))
     conn.commit()
     conn.close()
-
-flask_app = Flask(__name__)
-application = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -213,21 +213,24 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     u_data = get_user(user_id)
-    chu_off_info = get_stock_info("chu_off")
-    rand_23s_info = get_stock_info("random_23s")
+    g1 = get_stock_info("goi_500skin")
+    g2 = get_stock_info("goi_anime_1m")
+    g3 = get_stock_info("goi_rand_23s")
     
     text = (
         "⚔️ <b>HỆ THỐNG ĐỔI ACC LIÊN QUÂN MOBILE</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        f"🔒 <b>Acc Chủ Off >3 Tháng:</b> <code>{chu_off_info['stock']}</code> acc <i>(Giá: {chu_off_info['price']} xu)</i>\n"
-        f"🎲 <b>Random 2s - 3s Uy Tín Cao:</b> <code>{rand_23s_info['stock']}</code> acc <i>(Giá: {rand_23s_info['price']} xu)</i>\n"
+        f"👑 <b>Acc Off 3T (>500 Skin, 1 Skin 3s):</b> <code>{g1['stock']}</code> acc <i>({g1['price']} xu)</i>\n"
+        f"🎌 <b>Random Anime (Off >1T, Uy tín >90):</b> <code>{g2['stock']}</code> acc <i>({g2['price']} xu)</i>\n"
+        f"🎲 <b>Random 2s-3s (Uy tín >90):</b> <code>{g3['stock']}</code> acc <i>({g3['price']} xu)</i>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         f"💰 <b>Số dư tài khoản:</b> <code>{u_data['xu']} xu</code>\n"
         "📌 <i>Cách kiếm thêm xu: Bấm nút 'Kiếm Xu' bên dưới để lấy link mời bạn bè (1 Ref = 5 xu).</i>"
     )
     keyboard = [
-        [InlineKeyboardButton(f"🔒 Đổi Acc Chủ Off >3 Tháng ({chu_off_info['stock']} còn)", callback_data="doi_chu_off")],
-        [InlineKeyboardButton(f"🎲 Đổi Random 2s-3s Uy Tín ({rand_23s_info['stock']} còn)", callback_data="doi_random")],
+        [InlineKeyboardButton(f"👑 Acc 500+ Skin (Kho: {g1['stock']})", callback_data="doi_goi_500skin")],
+        [InlineKeyboardButton(f"🎌 Random Anime Off >1T (Kho: {g2['stock']})", callback_data="doi_goi_anime_1m")],
+        [InlineKeyboardButton(f"🎲 Random 2s-3s Uy tín (Kho: {g3['stock']})", callback_data="doi_goi_rand_23s")],
         [InlineKeyboardButton("🎁 Kiếm Xu (Lấy Link Ref)", callback_data="kiem_xu")]
     ]
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -235,21 +238,24 @@ async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_main_menu_callback(query, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     u_data = get_user(user_id)
-    chu_off_info = get_stock_info("chu_off")
-    rand_23s_info = get_stock_info("random_23s")
+    g1 = get_stock_info("goi_500skin")
+    g2 = get_stock_info("goi_anime_1m")
+    g3 = get_stock_info("goi_rand_23s")
     
     text = (
         "⚔️ <b>HỆ THỐNG ĐỔI ACC LIÊN QUÂN MOBILE</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
-        f"🔒 <b>Acc Chủ Off >3 Tháng:</b> <code>{chu_off_info['stock']}</code> acc <i>(Giá: {chu_off_info['price']} xu)</i>\n"
-        f"🎲 <b>Random 2s - 3s Uy Tín Cao:</b> <code>{rand_23s_info['stock']}</code> acc <i>(Giá: {rand_23s_info['price']} xu)</i>\n"
+        f"👑 <b>Acc Off 3T (>500 Skin, 1 Skin 3s):</b> <code>{g1['stock']}</code> acc <i>({g1['price']} xu)</i>\n"
+        f"🎌 <b>Random Anime (Off >1T, Uy tín >90):</b> <code>{g2['stock']}</code> acc <i>({g2['price']} xu)</i>\n"
+        f"🎲 <b>Random 2s-3s (Uy tín >90):</b> <code>{g3['stock']}</code> acc <i>({g3['price']} xu)</i>\n"
         "━━━━━━━━━━━━━━━━━━━\n"
         f"💰 <b>Số dư tài khoản:</b> <code>{u_data['xu']} xu</code>\n"
         "📌 <i>Cách kiếm thêm xu: Bấm nút 'Kiếm Xu' bên dưới để lấy link mời bạn bè (1 Ref = 5 xu).</i>"
     )
     keyboard = [
-        [InlineKeyboardButton(f"🔒 Đổi Acc Chủ Off >3 Tháng ({chu_off_info['stock']} còn)", callback_data="doi_chu_off")],
-        [InlineKeyboardButton(f"🎲 Đổi Random 2s-3s Uy Tín ({rand_23s_info['stock']} còn)", callback_data="doi_random")],
+        [InlineKeyboardButton(f"👑 Acc 500+ Skin (Kho: {g1['stock']})", callback_data="doi_goi_500skin")],
+        [InlineKeyboardButton(f"🎌 Random Anime Off >1T (Kho: {g2['stock']})", callback_data="doi_goi_anime_1m")],
+        [InlineKeyboardButton(f"🎲 Random 2s-3s Uy tín (Kho: {g3['stock']})", callback_data="doi_goi_rand_23s")],
         [InlineKeyboardButton("🎁 Kiếm Xu (Lấy Link Ref)", callback_data="kiem_xu")]
     ]
     await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -269,9 +275,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         item_type = data.replace("add_stock_", "")
         admin_states[user_id] = {"action": "add_stock", "item": item_type}
-        kho_name = "Acc Chủ Off >3 Tháng" if item_type == "chu_off" else "Random 2s-3s Uy Tín"
         await query.answer()
-        await query.message.reply_text(f"📦 <b>Đã chọn kho: {kho_name}</b>\n\n👉 Nhập số lượng muốn thêm:", parse_mode="HTML")
+        await query.message.reply_text("📦 <b>Nhập số lượng muốn thêm vào kho:</b>", parse_mode="HTML")
         return
 
     if data.startswith("set_price_"):
@@ -280,46 +285,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         item_type = data.replace("set_price_", "")
         admin_states[user_id] = {"action": "set_price", "item": item_type}
-        kho_name = "Acc Chủ Off >3 Tháng" if item_type == "chu_off" else "Random 2s-3s Uy Tín"
         await query.answer()
-        await query.message.reply_text(f"💵 <b>Đã chọn kho chỉnh giá: {kho_name}</b>\n\n👉 Nhập mức giá mới (số xu):", parse_mode="HTML")
+        await query.message.reply_text("💵 <b>Nhập mức giá mới (số xu):</b>", parse_mode="HTML")
         return
 
     u_data = get_user(user_id)
 
-    if data == "doi_chu_off":
-        chu_off_info = get_stock_info("chu_off")
-        price = chu_off_info["price"]
-        if chu_off_info["stock"] <= 0:
-            await query.answer("❌ Kho đã hết hàng!", show_alert=True)
-        elif u_data["xu"] < price:
-            await query.answer(f"❌ Không đủ {price} xu!", show_alert=True)
-        else:
-            if sub_stock_count("chu_off", 1):
-                add_user_xu(user_id, -price)
-                fake_acc = generate_fake_account("chu_off")
-                await query.answer("🎉 Đổi thành công!", show_alert=False)
-                await context.bot.send_message(chat_id=user_id, text=f"✅ <b>GIAO DỊCH THÀNH CÔNG</b>\n\n{fake_acc}", parse_mode="HTML")
-            else:
+    # Xử lý đổi các gói
+    for item_key in ["goi_500skin", "goi_anime_1m", "goi_rand_23s"]:
+        if data == f"doi_{item_key}":
+            info = get_stock_info(item_key)
+            price = info["price"]
+            if info["stock"] <= 0:
                 await query.answer("❌ Kho đã hết hàng!", show_alert=True)
-
-    elif data == "doi_random":
-        rand_23s_info = get_stock_info("random_23s")
-        price = rand_23s_info["price"]
-        if rand_23s_info["stock"] <= 0:
-            await query.answer("❌ Kho đã hết hàng!", show_alert=True)
-        elif u_data["xu"] < price:
-            await query.answer(f"❌ Không đủ {price} xu!", show_alert=True)
-        else:
-            if sub_stock_count("random_23s", 1):
-                add_user_xu(user_id, -price)
-                fake_acc = generate_fake_account("random_23s")
-                await query.answer("🎉 Đổi thành công!", show_alert=False)
-                await context.bot.send_message(chat_id=user_id, text=f"✅ <b>GIAO DỊCH THÀNH CÔNG</b>\n\n{fake_acc}", parse_mode="HTML")
+            elif u_data["xu"] < price:
+                await query.answer(f"❌ Không đủ {price} xu!", show_alert=True)
             else:
-                await query.answer("❌ Kho đã hết hàng!", show_alert=True)
+                if sub_stock_count(item_key, 1):
+                    add_user_xu(user_id, -price)
+                    fake_acc = generate_fake_account(item_key)
+                    await query.answer("🎉 Đổi thành công!", show_alert=False)
+                    await context.bot.send_message(chat_id=user_id, text=f"✅ <b>GIAO DỊCH THÀNH CÔNG</b>\n\n{fake_acc}", parse_mode="HTML")
+                else:
+                    await query.answer("❌ Kho đã hết hàng!", show_alert=True)
+            return
             
-    elif data == "kiem_xu":
+    if data == "kiem_xu":
         ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
         await query.answer("Đã tạo link!", show_alert=True)
         await context.bot.send_message(chat_id=user_id, text=f"🔗 <b>Link giới thiệu (1 Ref = 5 xu):</b>\n<code>{ref_link}</code>", parse_mode="HTML")
@@ -346,34 +337,40 @@ async def admin_addxu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_themkho_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    chu_off_info = get_stock_info("chu_off")
-    rand_23s_info = get_stock_info("random_23s")
+    g1 = get_stock_info("goi_500skin")
+    g2 = get_stock_info("goi_anime_1m")
+    g3 = get_stock_info("goi_rand_23s")
     keyboard = [
-        [InlineKeyboardButton(f"🔒 Thêm Stock Chủ Off (Kho: {chu_off_info['stock']})", callback_data="add_stock_chu_off")],
-        [InlineKeyboardButton(f"🎲 Thêm Stock Random (Kho: {rand_23s_info['stock']})", callback_data="add_stock_random_23s")]
+        [InlineKeyboardButton(f"👑 Thêm Acc 500+ Skin (Kho: {g1['stock']})", callback_data="add_stock_goi_500skin")],
+        [InlineKeyboardButton(f"🎌 Thêm Random Anime (Kho: {g2['stock']})", callback_data="add_stock_goi_anime_1m")],
+        [InlineKeyboardButton(f"🎲 Thêm Random 2s-3s (Kho: {g3['stock']})", callback_data="add_stock_goi_rand_23s")]
     ]
     await update.message.reply_text("📦 <b>CHỌN KHO TĂNG STOCK:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def admin_chinhgia_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    chu_off_info = get_stock_info("chu_off")
-    rand_23s_info = get_stock_info("random_23s")
+    g1 = get_stock_info("goi_500skin")
+    g2 = get_stock_info("goi_anime_1m")
+    g3 = get_stock_info("goi_rand_23s")
     keyboard = [
-        [InlineKeyboardButton(f"🔒 Giá Chủ Off ({chu_off_info['price']} xu)", callback_data="set_price_chu_off")],
-        [InlineKeyboardButton(f"🎲 Giá Random ({rand_23s_info['price']} xu)", callback_data="set_price_random_23s")]
+        [InlineKeyboardButton(f"👑 Giá 500+ Skin ({g1['price']} xu)", callback_data="set_price_goi_500skin")],
+        [InlineKeyboardButton(f"🎌 Giá Random Anime ({g2['price']} xu)", callback_data="set_price_goi_anime_1m")],
+        [InlineKeyboardButton(f"🎲 Giá Random 2s-3s ({g3['price']} xu)", callback_data="set_price_goi_rand_23s")]
     ]
-    await update.message.reply_text("💵 <b>CHỌN KHO ĐỂ CHỈNH GIÁ:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await update.message.reply_text("💵 <b>CHỌN GÓI ĐỂ CHỈNH GIÁ:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def admin_xemkho(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    chu_off_info = get_stock_info("chu_off")
-    rand_23s_info = get_stock_info("random_23s")
+    g1 = get_stock_info("goi_500skin")
+    g2 = get_stock_info("goi_anime_1m")
+    g3 = get_stock_info("goi_rand_23s")
     await update.message.reply_text(
-        "📦 <b>THỐNG KÊ KHO & GIÁ:</b>\n"
-        f"🔒 Chủ Off: {chu_off_info['stock']} acc - {chu_off_info['price']} xu\n"
-        f"🎲 Random: {rand_23s_info['stock']} acc - {rand_23s_info['price']} xu",
+        "📦 <b>THỐNG KÊ KHO & GIÁ HIỆN TẠI:</b>\n\n"
+        f"👑 Acc 500+ Skin: {g1['stock']} acc - {g1['price']} xu\n"
+        f"🎌 Random Anime Off >1T: {g2['stock']} acc - {g2['price']} xu\n"
+        f"🎲 Random 2s-3s Uy tín: {g3['stock']} acc - {g3['price']} xu",
         parse_mode="HTML"
     )
 
@@ -387,45 +384,31 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
         item_type = state["item"]
         try:
             value = int(update.message.text.strip())
-            kho_name = "Acc Chủ Off >3 Tháng" if item_type == "chu_off" else "Random 2s-3s Uy Tín"
             if action == "add_stock":
                 add_stock_count(item_type, value)
                 new_info = get_stock_info(item_type)
                 del admin_states[user_id]
-                await update.message.reply_text(f"✅ Đã thêm {value} vào {kho_name}. Tổng kho: {new_info['stock']}")
+                await update.message.reply_text(f"✅ Đã thêm thành công! Tổng kho hiện tại: {new_info['stock']}")
             elif action == "set_price":
                 update_item_price(item_type, value)
                 new_info = get_stock_info(item_type)
                 del admin_states[user_id]
-                await update.message.reply_text(f"✅ Đã đổi giá {kho_name} thành {new_info['price']} xu")
+                await update.message.reply_text(f"✅ Đã cập nhật giá mới thành: {new_info['price']} xu")
         except ValueError:
-            await update.message.reply_text("❌ Vui lòng nhập một con số nguyên!")
+            await update.message.reply_text("❌ Vui lòng nhập một con số nguyên hợp lệ!")
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("addxu", admin_addxu))
-application.add_handler(CommandHandler("themkho", admin_themkho_menu))
-application.add_handler(CommandHandler("chinhgia", admin_chinhgia_menu))
-application.add_handler(CommandHandler("kho", admin_xemkho))
-application.add_handler(CallbackQueryHandler(button_handler))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input))
+def main():
+    application = Application.builder().token(TOKEN).build()
 
-@flask_app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    json_data = request.get_json(force=True)
-    update = Update.de_json(json_data, application.bot)
-    
-    # Xử lý update trực tiếp qua asyncio loop của ứng dụng
-    async def process():
-        await application.initialize()
-        await application.process_update(update)
-        
-    import asyncio
-    asyncio.run(process())
-    return "OK", 200
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("addxu", admin_addxu))
+    application.add_handler(CommandHandler("themkho", admin_themkho_menu))
+    application.add_handler(CommandHandler("chinhgia", admin_chinhgia_menu))
+    application.add_handler(CommandHandler("kho", admin_xemkho))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input))
 
-@flask_app.route("/", methods=["GET"])
-def index():
-    return "Bot Liên Quân running 24/7!", 200
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    flask_app.run(host="0.0.0.0", port=PORT)
+    main()
