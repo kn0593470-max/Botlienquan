@@ -2,6 +2,7 @@ import os
 import logging
 import sqlite3
 import random
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, 
@@ -20,10 +21,9 @@ GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "@nhomsharemodallgame")
 PORT = int(os.getenv("PORT", "8080"))
 ADMIN_ID = 7907990385  # ID Admin của ông
 
-# Lưu trạng thái Admin đang thao tác gì (thêm stock hay chỉnh giá)
 admin_states = {}
 
-# --- KHỞI TẠO CƠ SỞ DỮ LIỆU SQLITE ---
+# --- KHỞI TẠO SQLITE ---
 def init_db():
     conn = sqlite3.connect("bot_lienquan.db")
     cursor = conn.cursor()
@@ -127,6 +127,9 @@ def add_user_xu(user_id, amount):
         cursor.execute("INSERT INTO users (user_id, xu, joined) VALUES (?, ?, 0)", (user_id, amount))
     conn.commit()
     conn.close()
+
+flask_app = Flask(__name__)
+application = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -398,23 +401,31 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
         except ValueError:
             await update.message.reply_text("❌ Vui lòng nhập một con số nguyên!")
 
-def main():
-    application = Application.builder().token(TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("addxu", admin_addxu))
+application.add_handler(CommandHandler("themkho", admin_themkho_menu))
+application.add_handler(CommandHandler("chinhgia", admin_chinhgia_menu))
+application.add_handler(CommandHandler("kho", admin_xemkho))
+application.add_handler(CallbackQueryHandler(button_handler))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input))
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("addxu", admin_addxu))
-    application.add_handler(CommandHandler("themkho", admin_themkho_menu))
-    application.add_handler(CommandHandler("chinhgia", admin_chinhgia_menu))
-    application.add_handler(CommandHandler("kho", admin_xemkho))
-    application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input))
+@flask_app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    json_data = request.get_json(force=True)
+    update = Update.de_json(json_data, application.bot)
+    
+    # Xử lý update trực tiếp qua asyncio loop của ứng dụng
+    async def process():
+        await application.initialize()
+        await application.process_update(update)
+        
+    import asyncio
+    asyncio.run(process())
+    return "OK", 200
 
-    # Tự động chạy Webhook chuẩn của thư viện python-telegram-bot
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=f"https://botlienquan.onrender.com/{TOKEN}"
-    )
+@flask_app.route("/", methods=["GET"])
+def index():
+    return "Bot Liên Quân running 24/7!", 200
 
 if __name__ == "__main__":
-    main()
+    flask_app.run(host="0.0.0.0", port=PORT)
