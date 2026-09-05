@@ -1,9 +1,7 @@
 import os
 import logging
 import sqlite3
-import asyncio
 import random
-from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, 
@@ -25,7 +23,7 @@ ADMIN_ID = 7907990385  # ID Admin của ông
 # Lưu trạng thái Admin đang thao tác gì (thêm stock hay chỉnh giá)
 admin_states = {}
 
-# --- KHỞI TẠO CƠ SỞ DỮ LIỆU SQLITE (KHO ẢO, GIÁ TIỀN, USER) ---
+# --- KHỞI TẠO CƠ SỞ DỮ LIỆU SQLITE ---
 def init_db():
     conn = sqlite3.connect("bot_lienquan.db")
     cursor = conn.cursor()
@@ -46,7 +44,6 @@ def init_db():
             price INTEGER DEFAULT 50
         )
     """)
-    # Khởi tạo mặc định 2 kho nếu chưa có (kèm giá mặc định)
     cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('chu_off', 0, 50)")
     cursor.execute("INSERT OR IGNORE INTO virtual_stocks (item_type, stock_count, price) VALUES ('random_23s', 0, 30)")
     conn.commit()
@@ -131,9 +128,6 @@ def add_user_xu(user_id, amount):
     conn.commit()
     conn.close()
 
-flask_app = Flask(__name__)
-application = Application.builder().token(TOKEN).updater(None).build()
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -169,7 +163,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         u_data = get_user(user_id)
         if u_data["has_been_referred"] == 1 and u_data["reward_given"] == 0:
             referrer_id = u_data["referrer_id"]
-            add_user_xu(referrer_id, 5)  # Thưởng 5 xu cho ref
+            add_user_xu(referrer_id, 5)
             update_user_field(user_id, "reward_given", 1)
             try:
                 await context.bot.send_message(chat_id=referrer_id, text="🎉 <b>Có người vừa join kênh qua link của bạn! (+5 xu).</b>", parse_mode="HTML")
@@ -197,7 +191,7 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
             u_data = get_user(user_id)
             if u_data["has_been_referred"] == 1 and u_data["reward_given"] == 0:
                 referrer_id = u_data["referrer_id"]
-                add_user_xu(referrer_id, 5)  # Thưởng 5 xu cho ref
+                add_user_xu(referrer_id, 5)
                 update_user_field(user_id, "reward_given", 1)
                 try:
                     await context.bot.send_message(chat_id=referrer_id, text="🎉 <b>Có người vừa join kênh qua link của bạn! (+5 xu).</b>", parse_mode="HTML")
@@ -216,7 +210,6 @@ async def check_joined_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     u_data = get_user(user_id)
-    
     chu_off_info = get_stock_info("chu_off")
     rand_23s_info = get_stock_info("random_23s")
     
@@ -239,7 +232,6 @@ async def send_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_main_menu_callback(query, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     u_data = get_user(user_id)
-    
     chu_off_info = get_stock_info("chu_off")
     rand_23s_info = get_stock_info("random_23s")
     
@@ -268,40 +260,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await check_joined_callback(update, context)
         return
 
-    # Xử lý chọn kho để tăng stock ảo (Chỉ Admin)
     if data.startswith("add_stock_"):
         if user_id != ADMIN_ID:
             await query.answer("❌ Bạn không có quyền này!", show_alert=True)
             return
-        
         item_type = data.replace("add_stock_", "")
         admin_states[user_id] = {"action": "add_stock", "item": item_type}
-        
         kho_name = "Acc Chủ Off >3 Tháng" if item_type == "chu_off" else "Random 2s-3s Uy Tín"
         await query.answer()
-        await query.message.reply_text(
-            f"📦 <b>Đã chọn kho: {kho_name}</b>\n\n"
-            "👉 Bây giờ bạn hãy **nhập số lượng muốn thêm** vào stock (Ví dụ: gõ <code>50</code>):",
-            parse_mode="HTML"
-        )
+        await query.message.reply_text(f"📦 <b>Đã chọn kho: {kho_name}</b>\n\n👉 Nhập số lượng muốn thêm:", parse_mode="HTML")
         return
 
-    # Xử lý chọn kho để chỉnh giá (Chỉ Admin)
     if data.startswith("set_price_"):
         if user_id != ADMIN_ID:
             await query.answer("❌ Bạn không có quyền này!", show_alert=True)
             return
-        
         item_type = data.replace("set_price_", "")
         admin_states[user_id] = {"action": "set_price", "item": item_type}
-        
         kho_name = "Acc Chủ Off >3 Tháng" if item_type == "chu_off" else "Random 2s-3s Uy Tín"
         await query.answer()
-        await query.message.reply_text(
-            f"💵 <b>Đã chọn kho chỉnh giá: {kho_name}</b>\n\n"
-            "👉 Bây giờ bạn hãy **nhập mức giá mới bằng số xu** (Ví dụ: gõ <code>60</code>):",
-            parse_mode="HTML"
-        )
+        await query.message.reply_text(f"💵 <b>Đã chọn kho chỉnh giá: {kho_name}</b>\n\n👉 Nhập mức giá mới (số xu):", parse_mode="HTML")
         return
 
     u_data = get_user(user_id)
@@ -310,9 +288,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chu_off_info = get_stock_info("chu_off")
         price = chu_off_info["price"]
         if chu_off_info["stock"] <= 0:
-            await query.answer("❌ Kho Acc Chủ Off >3 Tháng đã hết hàng!", show_alert=True)
+            await query.answer("❌ Kho đã hết hàng!", show_alert=True)
         elif u_data["xu"] < price:
-            await query.answer(f"❌ Bạn không đủ {price} xu để đổi!", show_alert=True)
+            await query.answer(f"❌ Không đủ {price} xu!", show_alert=True)
         else:
             if sub_stock_count("chu_off", 1):
                 add_user_xu(user_id, -price)
@@ -326,9 +304,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rand_23s_info = get_stock_info("random_23s")
         price = rand_23s_info["price"]
         if rand_23s_info["stock"] <= 0:
-            await query.answer("❌ Kho Random 2s-3s đã hết hàng!", show_alert=True)
+            await query.answer("❌ Kho đã hết hàng!", show_alert=True)
         elif u_data["xu"] < price:
-            await query.answer(f"❌ Bạn không đủ {price} xu để đổi!", show_alert=True)
+            await query.answer(f"❌ Không đủ {price} xu!", show_alert=True)
         else:
             if sub_stock_count("random_23s", 1):
                 add_user_xu(user_id, -price)
@@ -341,21 +319,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "kiem_xu":
         ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
         await query.answer("Đã tạo link!", show_alert=True)
-        await context.bot.send_message(chat_id=user_id, text=f"🔗 <b>Link giới thiệu của bạn (1 Ref = 5 xu):</b>\n<code>{ref_link}</code>", parse_mode="HTML")
+        await context.bot.send_message(chat_id=user_id, text=f"🔗 <b>Link giới thiệu (1 Ref = 5 xu):</b>\n<code>{ref_link}</code>", parse_mode="HTML")
 
-# --- CÁC LỆNH ADMIN ---
 async def admin_addxu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
     args = context.args
     if len(args) < 2:
-        await update.message.reply_text("❌ Dùng cú pháp: /addxu [ID] [Số xu]")
+        await update.message.reply_text("❌ Cú pháp: /addxu [ID] [Số xu]")
         return
     try:
         target_id = int(args[0])
         amount = int(args[1])
         add_user_xu(target_id, amount)
-        await update.message.reply_text("✅ Đã thêm xu hoàn tất!")
+        await update.message.reply_text("✅ Đã thêm xu!")
         try:
             await context.bot.send_message(chat_id=target_id, text=f"🎁 Bạn được cộng <b>{amount} xu</b> từ Admin!", parse_mode="HTML")
         except Exception:
@@ -366,38 +343,24 @@ async def admin_addxu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_themkho_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    
     chu_off_info = get_stock_info("chu_off")
     rand_23s_info = get_stock_info("random_23s")
-    
     keyboard = [
-        [InlineKeyboardButton(f"🔒 Thêm Stock Chủ Off >3 Tháng (Kho: {chu_off_info['stock']})", callback_data="add_stock_chu_off")],
-        [InlineKeyboardButton(f"🎲 Thêm Stock Random 2s-3s (Kho: {rand_23s_info['stock']})", callback_data="add_stock_random_23s")]
+        [InlineKeyboardButton(f"🔒 Thêm Stock Chủ Off (Kho: {chu_off_info['stock']})", callback_data="add_stock_chu_off")],
+        [InlineKeyboardButton(f"🎲 Thêm Stock Random (Kho: {rand_23s_info['stock']})", callback_data="add_stock_random_23s")]
     ]
-    await update.message.reply_text(
-        "📦 <b>BẠN MUỐN TĂNG STOCK CHO KHO NÀO?</b>\n"
-        "Hãy bấm vào nút bên dưới:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    await update.message.reply_text("📦 <b>CHỌN KHO TĂNG STOCK:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def admin_chinhgia_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    
     chu_off_info = get_stock_info("chu_off")
     rand_23s_info = get_stock_info("random_23s")
-    
     keyboard = [
-        [InlineKeyboardButton(f"🔒 Chỉnh Giá Chủ Off >3 Tháng (Giá hiện tại: {chu_off_info['price']} xu)", callback_data="set_price_chu_off")],
-        [InlineKeyboardButton(f"🎲 Chỉnh Giá Random 2s-3s (Giá hiện tại: {rand_23s_info['price']} xu)", callback_data="set_price_random_23s")]
+        [InlineKeyboardButton(f"🔒 Giá Chủ Off ({chu_off_info['price']} xu)", callback_data="set_price_chu_off")],
+        [InlineKeyboardButton(f"🎲 Giá Random ({rand_23s_info['price']} xu)", callback_data="set_price_random_23s")]
     ]
-    await update.message.reply_text(
-        "💵 <b>BẠN MUỐN CHỈNH GIÁ CHO KHO NÀO?</b>\n"
-        "Hãy bấm vào nút bên dưới để tùy chỉnh:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    await update.message.reply_text("💵 <b>CHỌN KHO ĐỂ CHỈNH GIÁ:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def admin_xemkho(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -405,84 +368,53 @@ async def admin_xemkho(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chu_off_info = get_stock_info("chu_off")
     rand_23s_info = get_stock_info("random_23s")
     await update.message.reply_text(
-        "📦 <b>THỐNG KÊ KHO HÀNG & GIÁ HIỆN TẠI:</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"🔒 <b>Acc Chủ Off >3 Tháng:</b>\n"
-        f" - Tồn kho: <b>{chu_off_info['stock']}</b> acc\n"
-        f" - Giá bán: <b>{chu_off_info['price']} xu</b>\n\n"
-        f"🎲 <b>Random 2s-3s Uy Tín:</b>\n"
-        f" - Tồn kho: <b>{rand_23s_info['stock']}</b> acc\n"
-        f" - Giá bán: <b>{rand_23s_info['price']} xu</b>",
+        "📦 <b>THỐNG KÊ KHO & GIÁ:</b>\n"
+        f"🔒 Chủ Off: {chu_off_info['stock']} acc - {chu_off_info['price']} xu\n"
+        f"🎲 Random: {rand_23s_info['stock']} acc - {rand_23s_info['price']} xu",
         parse_mode="HTML"
     )
 
-# Xử lý nội dung Admin nhập vào sau khi bấm Thêm Kho hoặc Chỉnh Giá
 async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         return
-    
     if user_id in admin_states:
         state = admin_states[user_id]
         action = state["action"]
         item_type = state["item"]
-        text_input = update.message.text.strip()
-        
         try:
-            value = int(text_input)
+            value = int(update.message.text.strip())
             kho_name = "Acc Chủ Off >3 Tháng" if item_type == "chu_off" else "Random 2s-3s Uy Tín"
-            
             if action == "add_stock":
                 add_stock_count(item_type, value)
                 new_info = get_stock_info(item_type)
                 del admin_states[user_id]
-                await update.message.reply_text(
-                    f"✅ <b>ĐÃ THÊM STOCK THÀNH CÔNG!</b>\n"
-                    f"📁 Kho: <b>{kho_name}</b>\n"
-                    f"➕ Cộng thêm: <b>+{value}</b>\n"
-                    f"📊 Tổng tồn kho mới: <b>{new_info['stock']} acc</b>",
-                    parse_mode="HTML"
-                )
+                await update.message.reply_text(f"✅ Đã thêm {value} vào {kho_name}. Tổng kho: {new_info['stock']}")
             elif action == "set_price":
                 update_item_price(item_type, value)
                 new_info = get_stock_info(item_type)
                 del admin_states[user_id]
-                await update.message.reply_text(
-                    f"✅ <b>CẬP NHẬT GIÁ THÀNH CÔNG!</b>\n"
-                    f"📁 Kho: <b>{kho_name}</b>\n"
-                    f"💵 Giá mới: <b>{new_info['price']} xu</b>",
-                    parse_mode="HTML"
-                )
+                await update.message.reply_text(f"✅ Đã đổi giá {kho_name} thành {new_info['price']} xu")
         except ValueError:
-            await update.message.reply_text("❌ Vui lòng chỉ nhập một con số nguyên hợp lệ (Ví dụ: <code>50</code>)", parse_mode="HTML")
+            await update.message.reply_text("❌ Vui lòng nhập một con số nguyên!")
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("addxu", admin_addxu))
-application.add_handler(CommandHandler("themkho", admin_themkho_menu))
-application.add_handler(CommandHandler("chinhgia", admin_chinhgia_menu))
-application.add_handler(CommandHandler("kho", admin_xemkho))
-application.add_handler(CallbackQueryHandler(button_handler))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input))
+def main():
+    application = Application.builder().token(TOKEN).build()
 
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("addxu", admin_addxu))
+    application.add_handler(CommandHandler("themkho", admin_themkho_menu))
+    application.add_handler(CommandHandler("chinhgia", admin_chinhgia_menu))
+    application.add_handler(CommandHandler("kho", admin_xemkho))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_text_input))
 
-@flask_app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    json_data = request.get_json(force=True)
-    update = Update.de_json(json_data, application.bot)
-    async def run_update():
-        if not application.running:
-            await application.initialize()
-        await application.process_update(update)
-    
-    future = asyncio.run_coroutine_threadsafe(run_update(), loop)
-    future.result()
-    return "OK", 200
-
-@flask_app.route("/", methods=["GET"])
-def index():
-    return "Bot Liên Quân running 24/7!", 200
+    # Tự động chạy Webhook chuẩn của thư viện python-telegram-bot
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=f"https://botlienquan.onrender.com/{TOKEN}"
+    )
 
 if __name__ == "__main__":
-    flask_app.run(host="0.0.0.0", port=PORT)
+    main()
